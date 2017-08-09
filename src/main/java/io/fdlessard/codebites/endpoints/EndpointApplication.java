@@ -1,28 +1,101 @@
+package io.fdlessard.codebites.endpoints;
+
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
 
 @SpringBootApplication
-public class EndpointsApplication {
+public class EndpointApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(EndpointsApplication.class, args);
+        SpringApplication.run(EndpointApplication.class, args);
+    }
+
+    public static class IdToPriceIdStrategy extends PropertyNamingStrategy.PropertyNamingStrategyBase {
+
+        public String translate(String input) {
+            if (Objects.equals(input, "id")) {
+                return "priceId";
+            }
+            return input;
+        }
+    }
+
+    @Configuration
+    public static class WebConfig extends WebMvcConfigurationSupport {
+
+        @Bean
+        public HttpMessageConverter<?> constrainedJackson2HttpMessageConverter() {
+            ConstrainedMappingJackson2HttpMessageConverter jsonConverter
+                    = new ConstrainedMappingJackson2HttpMessageConverter(Wrapper.class);
+            ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.json().build();
+            objectMapper.setPropertyNamingStrategy(new IdToPriceIdStrategy());
+            SimpleModule module = new SimpleModule();
+            module.addSerializer(Wrapper.class, new IndicatorSerializer());
+            objectMapper.registerModule(module);
+            jsonConverter.setObjectMapper(objectMapper);
+            return jsonConverter;
+        }
+
+        @Override
+        public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
+            converters.add(constrainedJackson2HttpMessageConverter());
+            super.addDefaultHttpMessageConverters(converters);
+        }
+    }
+
+    public static class IndicatorSerializer extends StdSerializer<Wrapper> {
+
+        public IndicatorSerializer() {
+            super(Wrapper.class);
+        }
+
+        @Override
+        public void serialize(Wrapper indicator, JsonGenerator gen, SerializerProvider provider) throws IOException {
+            gen.writeObject(indicator.getValue());
+        }
     }
 
     @Data
     @AllArgsConstructor
-    class Price {
-        String id;
-        String description;
+    public static class Wrapper<T> {
+        private T value;
+
+        public static <T> Wrapper<T> wrap(T value) {
+            return new Wrapper<>(value);
+        }
+    }
+
+
+    @Data
+    @AllArgsConstructor
+    public static class Price {
+        private String id;
+        private String description;
     }
 
     @RestController
     @RequestMapping(value = "/controller1")
-    class PriceController1 {
+    static class PriceController1 {
 
         @GetMapping(value = "/price")
         public Price getPrice() {
@@ -32,34 +105,11 @@ public class EndpointsApplication {
 
     @RestController
     @RequestMapping(value = "/controller2")
-    class PriceController2 {
+    static class PriceController2 {
 
         @GetMapping(value = "/price")
-        public Price getPrice() {
-            return new Price("id", "Description");
+        public Wrapper<Price> getPrice() {
+            return Wrapper.wrap(new Price("id", "Description"));
         }
     }
 }
-
-//
-// Basically, the goal is to use a different MappingJackson2HttpMessageConverter containing
-// a different Jackson ObjectMapper that uses a Jackson MixIn to rename(in the Json) the id to priceId
-// in the 2nd Controller.
-
-// What a call to the first controller would do :
-//
-// http://localhost:8080/controller1/price
-//
-// {
-//        id: "id",
-//        description: "Description"
-// }
-
-// What a call to the second controller would do :
-//
-// http://localhost:8080/controller2/price
-//
-// {
-//        priceId: "id",
-//        description: "Description"
-// }
