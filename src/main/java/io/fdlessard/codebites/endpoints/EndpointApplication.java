@@ -1,8 +1,8 @@
 package io.fdlessard.codebites.endpoints;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
@@ -21,23 +21,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupp
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
 
 @SpringBootApplication
 public class EndpointApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(EndpointApplication.class, args);
-    }
-
-    public static class IdToPriceIdStrategy extends PropertyNamingStrategy.PropertyNamingStrategyBase {
-
-        public String translate(String input) {
-            if (Objects.equals(input, "id")) {
-                return "priceId";
-            }
-            return input;
-        }
     }
 
     @Configuration
@@ -48,9 +37,9 @@ public class EndpointApplication {
             ConstrainedMappingJackson2HttpMessageConverter jsonConverter
                     = new ConstrainedMappingJackson2HttpMessageConverter(Wrapper.class);
             ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.json().build();
-            objectMapper.setPropertyNamingStrategy(new IdToPriceIdStrategy());
             SimpleModule module = new SimpleModule();
             module.addSerializer(Wrapper.class, new IndicatorSerializer());
+            module.setMixInAnnotation(Price.class, PriceMixin.class);
             objectMapper.registerModule(module);
             jsonConverter.setObjectMapper(objectMapper);
             return jsonConverter;
@@ -61,6 +50,12 @@ public class EndpointApplication {
             converters.add(constrainedJackson2HttpMessageConverter());
             super.addDefaultHttpMessageConverters(converters);
         }
+    }
+
+    public static abstract class PriceMixin {
+
+        @JsonProperty("priceId") abstract int getId();
+
     }
 
     public static class IndicatorSerializer extends StdSerializer<Wrapper> {
@@ -84,7 +79,6 @@ public class EndpointApplication {
             return new Wrapper<>(value);
         }
     }
-
 
     @Data
     @AllArgsConstructor
